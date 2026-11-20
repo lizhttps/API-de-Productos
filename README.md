@@ -37,5 +37,3 @@ El servidor corre en `http://localhost:3000`.
 
 Los campos `nombre`, `descripcion` y `precio` son obligatorios en POST y PUT.
 
-
-[Tu nombre] - Programación Web, Práctica 6
