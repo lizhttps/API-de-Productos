@@ -1,13 +1,15 @@
 {
-  "name": "practica-6-api-productos",
+  "name": "practica-7-api-productos-mongodb",
   "version": "1.0.0",
-  "description": "Práctica 6 - API REST de productos con Express (completar POST, PUT y DELETE)",
+  "description": "Práctica 7 - API REST de productos con Express y MongoDB (Mongoose)",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
     "dev": "node --watch app.js"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "mongoose": "^8.24.11"
   }
 }

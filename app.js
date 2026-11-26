@@ -1,120 +1,132 @@
+// Cargar las variables de entorno del archivo .env
+require('dotenv').config()
+
 const express = require('express')
+const mongoose = require('mongoose')
+const Producto = require('./models/Producto')
+
 const app = express()
+const PORT = process.env.PORT || 3000
 
 app.use(express.json())
 
-const productos = [
-    {
-        id: 1,
-        nombre: 'Teclado inalambrico',
-        descripcion: 'Teclado 101 teclas idioma ingles',
-        precio: 1500.00
-    },
-    {
-        id: 2,
-        nombre: 'Mouse inalambrico',
-        descripcion: 'Mouse optico inalambrico.',
-        precio: 600.00
-    },
-    {
-        id: 3,
-        nombre: 'Monitor 23.5 pulgadas full hd',
-        descripcion: 'Monitor Full HD panel IPS',
-        precio: 6500.00
+// Conexion a MongoDB el servidor solo arranca si la conexion es exitosa
+mongoose.connect(process.env.MONGODB_URI)
+    .then(() => {
+        console.log('Conectado a MongoDB')
+        app.listen(PORT, () => {
+            console.log(`Servidor corriendo en http://localhost:${PORT}`)
+        })
+    })
+    .catch((error) => {
+        console.error('Error al conectar con MongoDB:', error.message)
+    })
+
+// Convierte los errores de Mongoose en la respuesta HTTP correcta
+function manejarError(res, error) {
+    // Error de validacion del schema 
+    if (error.name === 'ValidationError') {
+        return res.status(400).json({ mensaje: 'Nombre, descripcion y precio son obligatorios y el precio no puede ser negativo' })
     }
-]
+    // Error de conversion de tipo: el id o el precio tienen un formato invalido
+    if (error.name === 'CastError') {
+        const mensaje = error.path === '_id' ? 'Id no valido' : 'Dato no valido'
+        return res.status(400).json({ mensaje })
+    }
+    // Cualquier otro error inesperado
+    console.error(error)
+    res.status(500).json({ mensaje: 'Error del servidor' })
+}
+
+// Verifica que vengan los tres campos 
+function faltanCampos({ nombre, descripcion, precio }) {
+    return !nombre || !descripcion || precio === undefined || precio === null || precio === ''
+}
 
 // GET - Listar todos los productos
-app.get('/productos', (req, res) => {
-    res.json(productos)
+app.get('/productos', async (req, res) => {
+    try {
+        const productos = await Producto.find()
+        res.json(productos)
+    } catch (error) {
+        manejarError(res, error)
+    }
 })
 
 // GET - Obtener un producto por id
-app.get('/productos/:id', (req, res) => {
-    const id = parseInt(req.params.id)
-    const producto = productos.find(p => p.id === id)
+app.get('/productos/:id', async (req, res) => {
+    try {
+        const producto = await Producto.findById(req.params.id)
 
-    if (!producto) {
-        return res.status(404).json({ mensaje: 'Producto no encontrado' })
+        if (!producto) {
+            return res.status(404).json({ mensaje: 'Producto no encontrado' })
+        }
+
+        res.json(producto)
+    } catch (error) {
+        manejarError(res, error)
     }
-
-    res.json(producto)
 })
 
+// POST - Crear un producto
+app.post('/productos', async (req, res) => {
+    try {
+        const { nombre, descripcion, precio } = req.body
 
-// delete
+        // Validar que no falte ningun campo obligatorio (codigo 400)
+        if (faltanCampos(req.body)) {
+            return res.status(400).json({ mensaje: 'Nombre, descripcion y precio son obligatorios' })
+        }
 
-app.delete('/productos/:id', (req, res) => {
-    const id = parseInt(req.params.id)
+        // Guardar en MongoDB 
+        const nuevoProducto = await Producto.create({ nombre, descripcion, precio })
 
-    const posicion = productos.findIndex(p => p.id === id)
-
-    if(posicion === -1){
-        return res.status(404).json({ mensaje: 'Producto no encontrado' });
+        // Responder 201 con el producto creado
+        res.status(201).json(nuevoProducto)
+    } catch (error) {
+        manejarError(res, error)
     }
-
-    const eliminado = productos.splice(posicion, 1)
-    res.json({ mensaje: 'Producto eliminado', producto: eliminado[0] })
 })
 
-// put
+// PUT - Actualizar un producto
+app.put('/productos/:id', async (req, res) => {
+    try {
+        const { nombre, descripcion, precio } = req.body
 
-app.put('/productos/:id', (req, res) => {
-    const id = parseInt(req.params.id)
+        // Validar que no falte ningun campo (codigo 400)
+        if (faltanCampos(req.body)) {
+            return res.status(400).json({ mensaje: 'Nombre, descripcion y precio son obligatorios' })
+        }
 
-    const posicion = productos.findIndex(p => p.id === id)
+        // n true devuelve el documento ya actualizado; runValidators aplica las validaciones del schema
+        const actualizado = await Producto.findByIdAndUpdate(
+            req.params.id,
+            { nombre, descripcion, precio },
+            { new: true, runValidators: true }
+        )
 
-    if(posicion === -1){
-        return res.status(404).json({ mensaje: 'Producto no encontrado' });
+        if (!actualizado) {
+            return res.status(404).json({ mensaje: 'Producto no encontrado' })
+        }
+
+        // Responder 200 con el producto actualizado
+        res.json(actualizado)
+    } catch (error) {
+        manejarError(res, error)
     }
-
-    const { nombre, descripcion, precio } = req.body
-
-    if (!nombre || !descripcion || !precio) {
-        return res.status(400).json({ mensaje: 'Nombre, descripcion y precio son obligatorios' })
-    }
-
-    productos[posicion] = {
-        id: id,
-        nombre: nombre,
-        descripcion: descripcion,
-        precio: parseFloat(precio)
-    }
-
-    // Responder 200 con el producto actualizado
-    res.json(productos[posicion])
 })
 
-//post
+// DELETE - Eliminar un producto
+app.delete('/productos/:id', async (req, res) => {
+    try {
+        const eliminado = await Producto.findByIdAndDelete(req.params.id)
 
-app.post('/productos', (req, res) => {
-    const { nombre, descripcion, precio } = req.body
+        if (!eliminado) {
+            return res.status(404).json({ mensaje: 'Producto no encontrado' })
+        }
 
-    // 1Validar que no falte ningún campo obligatorio (código 400)
-    if (!nombre || !descripcion || !precio) {
-        return res.status(400).json({ mensaje: 'Nombre, descripcion y precio son obligatorios' })
+        res.json({ mensaje: 'Producto eliminado', producto: eliminado })
+    } catch (error) {
+        manejarError(res, error)
     }
-
-    //  Generar un nuevo id que no se repita
-    const nuevoId = productos.length > 0
-        ? Math.max(...productos.map(p => p.id)) + 1
-        : 1
-
-    // Crear el nuevo producto con el precio convertido a número
-    const nuevoProducto = {
-        id: nuevoId,
-        nombre: nombre,
-        descripcion: descripcion,
-        precio: parseFloat(precio)
-    }
-
-    //  Agregar el producto al arreglo
-    productos.push(nuevoProducto)
-
-    // Responder con código 201 y el producto creado
-    res.status(201).json(nuevoProducto)
-})
-
-app.listen(3000, () => {
-    console.log('Servidor corriendo en http://localhost:3000')
 })
